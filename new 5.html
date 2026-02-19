@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Library & Furniture Management</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/emailjs-com@3/dist/email.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/dist/html5-qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; transition: background-image .3s ease; background-size: cover; background-position: center; background-attachment: fixed; }
+    .overlay { background: rgba(255, 255, 255, 0.9); min-height: 100vh; padding: 1px 0; }
+    .container { max-width: 900px; margin: 40px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    h1, h2, h3 { color: #333; }
+    table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #333; color: #fff; }
+    button { margin: 5px; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 1em; }
+    .btn-primary { background: #3498db; color: #fff; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-secondary { background: #f1c40f; color: #fff; }
+    .btn-danger { background: #e74c3c; color: #fff; }
+    .btn-export { background: #27ae60; color: #fff; }
+    .btn-print { background: #8e44ad; color: #fff; }
+    .btn-big { font-size: 1.2em; width: 250px; padding: 15px; margin-bottom: 10px; }
+    .hidden { display: none !important; }
+    .center { text-align: center; }
+    .settings-group { border: 1px solid #ddd; border-radius: 5px; padding: 15px; margin-bottom: 20px; text-align: left;}
+    .settings-group h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; }
+    .settings-group label { display: block; margin: 10px 0 5px; font-weight: bold; }
+    .settings-group input, .settings-group textarea, .settings-group select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    .settings-group textarea { min-height: 150px; font-family: monospace; }
+    .qr-label { display: inline-block; border: 1px solid #000; padding: 5px; margin: 5px; text-align: center; }
+    /* BRILLIANT IDEA 1: Learner Status Feedback CSS */
+    #teacherClassTable tr[assigned] { background-color: #fce8e6; } /* Light red/amber for already assigned */
+    #furnitureClassTable tr[assigned] { background-color: #fce8e6; } /* Light red/amber for already assigned */
+  </style>
+</head>
+<body>
+<div class="overlay">
+
+<div class="container center" id="homePage">
+  <h1>Library & Furniture System</h1>
+  <button class="btn-primary btn-big" onclick="showSection('teacherSection')">📚 Teacher Book Allocation</button><br>
+  <button class="btn-primary btn-big" onclick="showSection('furnitureSection')">🪑 Furniture Allocation</button><br>
+  <button class="btn-secondary btn-big" onclick="showSection('returnSection')">↩️ Return Items</button><br>
+  <button class="btn-secondary btn-big" onclick="showSection('dashboardSection')">📊 Dashboard</button><br>
+  <button class="btn-secondary btn-big" onclick="showSection('settingsSection')">⚙️ Settings</button><br><br>
+  <button class="btn-danger btn-big" onclick="forceClearData()">⚠️ FORCE CLEAR DATA AND RELOAD</button><br><br>
+  <label>Change Wallpaper:</label>
+  <input type="file" id="wallInput" accept="image/*">
+</div>
+
+<div class="container hidden" id="teacherSection">
+  <button class="btn-primary" onclick="goHome()">⬅ Home</button>
+  <h2>Teacher Book Allocation</h2>
+  <label>Select Class:</label><select id="teacherClassSelect"></select>
+  <label>Book:</label><select id="teacherBookSelect"></select>
+  <label>Date:</label><input type="date" id="teacherDate">
+  <button class="btn-primary" id="btnLoadTeacher">Load</button><button class="btn-print" onclick="window.print()">Print PDF</button>
+
+  <h3>Learners</h3><button class="btn-primary" id="btnFilterTeacher">Show Unassigned</button>
+  <table id="teacherClassTable"><thead><tr><th>Assign</th><th>Name</th><th>ADM</th><th>Book No.</th></tr></thead><tbody></tbody></table>
+  <button class="btn-primary" id="btnAssignTeacher">Assign Selected</button>
+  <button class="btn-secondary" id="btnScanBookQR">Scan Book QR Code</button>
+  <div id="readerBook" class="center hidden" style="width: 300px; margin: 20px auto;"></div>
+
+  <h3>Assigned Learners</h3>
+  <table id="teacherAssignedTable"><thead><tr><th>Name</th><th>ADM</th><th>Book</th><th>Book No.</th><th>Date</th></tr></thead><tbody></tbody></table>
+  <button class="btn-export" id="btnExportTeacherHTML">Export HTML</button>
+  <button class="btn-export" id="btnExportTeacherExcel">Export Excel</button>
+  <button class="btn-export" id="btnEmailTeacher">Send to Email</button>
+</div>
+
+<div class="container hidden" id="furnitureSection">
+  <button class="btn-primary" onclick="goHome()">⬅ Home</button>
+  <h2>Furniture Allocation</h2>
+  <label>Select Class:</label><select id="furnitureClassSelect"></select>
+  <label>Date:</label><input type="date" id="furnitureDate">
+  <button class="btn-primary" id="btnLoadFurniture">Load</button><button class="btn-print" onclick="window.print()">Print PDF</button>
+
+  <h3>Learners</h3>
+  <table id="furnitureClassTable"><thead><tr><th>Assign</th><th>Name</th><th>ADM</th><th>Chair No.</th><th>Locker No.</th></tr></thead><tbody></tbody></table>
+  <button class="btn-primary" id="btnAssignFurniture">Assign Selected</button>
+  <button class="btn-secondary" id="btnScanFurnitureQR">Scan Furniture QR Code</button>
+  <div id="readerFurniture" class="center hidden" style="width: 300px; margin: 20px auto;"></div>
+
+  <h3>Assigned Learners</h3>
+  <table id="furnitureAssignedTable"><thead><tr><th>Name</th><th>ADM</th><th>Chair</th><th>Locker</th><th>Date</th></tr></thead><tbody></tbody></table>
+  <button class="btn-export" id="btnExportFurnitureHTML">Export HTML</button>
+  <button class="btn-export" id="btnExportFurnitureExcel">Export Excel</button>
+  <button class="btn-export" id="btnEmailFurniture">Send to Email</button>
+</div>
+
+<div class="container hidden" id="returnSection">
+    <button class="btn-primary" onclick="goHome()">⬅ Home</button>
+    <h2>↩️ Return Items</h2>
+    <label>Search by Name or ADM:</label>
+    <input type="text" id="returnSearchInput" placeholder="Enter name or ADM number">
+    <button class="btn-primary" id="btnSearchReturn">Search</button>
+
+    <h3>Search Results</h3>
+    <table id="returnResultsTable"><thead><tr><th>Type</th><th>Name</th><th>ADM</th><th>Item</th><th>Item No.</th><th>Date Assigned</th><th>Return</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div class="container hidden" id="dashboardSection">
+    <button class="btn-primary" onclick="goHome()">⬅ Home</button>
+    <h2>📊 Dashboard</h2>
+    <div class="settings-group">
+        <h3>Resource Allocation Summary</h3>
+        <p>Total Books: <span id="totalBooks">0</span></p>
+        <p>Books Allocated: <span id="booksAllocated">0</span></p>
+        <p>Books Available: <span id="booksAvailable">0</span></p>
+        <hr>
+        <p>Total Furniture: <span id="totalFurniture">0</span></p>
+        <p>Chairs Allocated: <span id="chairsAllocated">0</span></p>
+        <p>Lockers Allocated: <span id="lockersAllocated">0</span></p>
+    </div>
+    <div class="settings-group">
+        <h3>Visual Reports (Placeholder)</h3>
+        <p><i>Charts and graphs would be displayed here to visualize allocation trends.</i></p>
+    </div>
+</div>
+
+<div class="container hidden" id="settingsSection">
+    <button class="btn-primary" onclick="goHome()">⬅ Home</button>
+    <h2>⚙️ Settings</h2>
+
+    <div class="settings-group">
+        <h3>Supabase Cloud Sync</h3>
+        <p>Enter your Supabase project credentials below to enable cloud backup. Make sure you've created the required tables.</p>
+        <label for="supabaseUrl">Project URL</label>
+        <input type="text" id="supabaseUrl" placeholder="https://your-project-id.supabase.co">
+        <label for="supabaseAnonKey">Public 'anon' Key</label>
+        <input type="text" id="supabaseAnonKey" placeholder="your-public-api-key">
+        <button class="btn-export" id="btnSaveSupabaseSettings">Save Credentials</button>
+    </div>
+
+    <div class="settings-group">
+        <h3>Class & Book Data</h3>
+        <p>Edit the JSON data below. Click 'Save' to update the application's data.</p>
+        <label for="jsonClasses">Class Lists (JSON)</label>
+        <textarea id="jsonClasses" placeholder='Example: {"Grade 1": [{"name": "John Doe", "adm": "101"}]}'></textarea>
+        <button class="btn-primary" id="btnLoadClassesJSON">Load Current</button>
+        <button class="btn-export" id="btnSaveClassesJSON">Save Classes</button>
+
+        <label for="jsonBooks">Book Catalog (JSON)</label>
+        <textarea id="jsonBooks" placeholder='Example: [{"title": "Maths Book 1", "available": 50}]'></textarea>
+        <button class="btn-primary" id="btnLoadBooksJSON">Load Current</button>
+        <button class="btn-export" id="btnSaveBooksJSON">Save Books</button>
+    </div>
+
+    <div class="settings-group">
+        <h3>Barcode/QR Code Labels</h3>
+        <p>Generate printable QR code labels for your resources.</p>
+        <label for="qrType">Item Type:</label>
+        <select id="qrType">
+            <option value="book">Book</option>
+            <option value="chair">Chair</option>
+            <option value="locker">Locker</option>
+        </select>
+        <label for="qrStartNumber">Start Number:</label>
+        <input type="number" id="qrStartNumber" value="1">
+        <label for="qrEndNumber">End Number:</label>
+        <input type="number" id="qrEndNumber" value="10">
+        <button class="btn-primary" id="btnGenerateQR">Generate & Print Labels</button>
+        <div id="qrLabelsContainer"></div>
+    </div>
+
+    <div class="settings-group">
+        <h3>Email Configuration (EmailJS)</h3>
+        <label for="emailPublicKey">Public Key</label>
+        <input type="text" id="emailPublicKey" placeholder="Your EmailJS Public Key">
+        <label for="emailServiceID">Service ID</label>
+        <input type="text" id="emailServiceID" placeholder="Your EmailJS Service ID">
+        <label for="emailTemplateID">Template ID</label>
+        <input type="text" id="emailTemplateID" placeholder="Your EmailJS Template ID">
+        <label for="emailRecipient1">Recipient Email 1</label>
+        <input type="email" id="emailRecipient1" placeholder="recipient1@example.com">
+        <label for="emailRecipient2">Recipient Email 2</label>
+        <input type="email" id="emailRecipient2" placeholder="recipient2@example.com">
+        <button class="btn-export" id="btnSaveEmailSettings">Save Email Settings</button>
+        <button class="btn-primary" id="btnSendTestEmail">Send Test Email</button>
+    </div>
+    
+    <div class="settings-group">
+        <h3>Application Data</h3>
+        <button class="btn-export" id="btnSyncToCloud">☁️ Sync Data to Cloud</button>
+        <button class="btn-danger" id="btnClearData">Clear All Application Data</button>
+        <p><small>This will permanently delete all saved classes, books, settings, and wallpaper from your browser.</small></p>
+    </div>
+</div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // --- GLOBAL VARIABLES & DEFAULTS ---
+  let classes = {};
+  let books = [];
+  let tAllocations = [];
+  let fAllocations = [];
+  let curTclass = [];
+  let curFclass = [];
+  let settings = {};
+  let supabase = null;
+  const allSections = ['homePage', 'teacherSection', 'furnitureSection', 'returnSection', 'dashboardSection', 'settingsSection'];
+  let qrScanner = null;
+
+  // --- SUPABASE CREDENTIALS (Your integrated keys) ---
+  const DEFAULT_SUPABASE_URL = "https://picycjejyoqrsxkuugsp.supabase.co";
+  const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBpY3ljamVqeW9xcnN4a3V1Z3NwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNTE3ODgsImV4cCI6MjA3NDcyNzc4OH0.FwH_PrLw2CCChE0k4QdCZwI4JspMZyZx0Z0hL3J1KP8";
+  // ----------------------------------------------------
+
+  // --- INITIALIZATION ---
+  function loadFromStorage() {
+    // 1. Load existing settings from local storage, or use the integrated defaults.
+    settings = JSON.parse(localStorage.getItem('appSettings')) || {
+        publicKey: "ZXqv-G0F06fYeF_ee",
+        serviceID: "service_2ujrbzj",
+        templateID: "template_41ai273",
+        recipient1: "eddiegucci05@gmail.com",
+        recipient2: "eddiegucci08@gmail.com",
+        supabaseUrl: DEFAULT_SUPABASE_URL,
+        supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY
+    };
+    
+    classes = JSON.parse(localStorage.getItem('savedClassLists') || '{}');
+    books = JSON.parse(localStorage.getItem('bookCatalog') || '[]');
+    const savedWallpaper = localStorage.getItem('wallpaper');
+    if (savedWallpaper) document.body.style.backgroundImage = `url('${savedWallpaper}')`;
+
+    // 2. Initialize Supabase client if credentials exist
+    if (settings.supabaseUrl && settings.supabaseAnonKey) {
+        supabase = createClient(settings.supabaseUrl, settings.supabaseAnonKey);
+        loadFromSupabase();
+    } else {
+        // Fallback to local storage if Supabase is not configured 
+        tAllocations = JSON.parse(localStorage.getItem('teacherAllocations') || '[]');
+        fAllocations = JSON.parse(localStorage.getItem('furnitureAllocations') || '[]');
+        populateSelectors();
+        loadSettingsInputs(); 
+        updateDashboard();
+        renderTeacherAssigned();
+        renderFurnitureAssigned();
+    }
+
+    if (window.emailjs && settings.publicKey) {
+        emailjs.init(settings.publicKey);
+    }
+  }
+
+  async function loadFromSupabase() {
+      try {
+          // Attempt to load allocations from Supabase
+          const { data: tData, error: tError } = await supabase.from('teacher_allocations').select('*');
+          if (tError) throw tError;
+          tAllocations = tData;
+
+          const { data: fData, error: fError } = await supabase.from('furniture_allocations').select('*');
+          if (fError) throw fError;
+          fAllocations = fData;
+
+          // Attempt to load classes from Supabase
+          const { data: cData, error: cError } = await supabase.from('classes').select('*');
+          if (cError) throw cError;
+          const newClasses = {};
+          cData.forEach(row => {
+              newClasses[row.class_name] = row.json_data;
+          });
+          classes = newClasses;
+          localStorage.setItem('savedClassLists', JSON.stringify(classes)); // Update local cache
+
+          alert("Data loaded from cloud successfully!");
+      } catch (e) {
+          alert("Failed to load data from Supabase. Using local storage. Check your tables and API keys.");
+          console.error("Supabase Load Error:", e);
+          // If cloud load fails, stick to local storage data loaded earlier
+          tAllocations = JSON.parse(localStorage.getItem('teacherAllocations') || '[]');
+          fAllocations = JSON.parse(localStorage.getItem('furnitureAllocations') || '[]');
+      }
+      populateSelectors();
+      loadSettingsInputs();
+      updateDashboard();
+      renderTeacherAssigned();
+      renderFurnitureAssigned();
+  }
+
+  async function saveToSupabase(table, data) {
+      if (!supabase) return alert("Supabase credentials not set or invalid. Please check Settings.");
+      try {
+          // Clear table and insert new data
+          const { error: deleteError } = await supabase.from(table).delete().neq('id', 0);
+          if (deleteError) throw deleteError;
+          
+          // Supabase's insert can take an array, which is why we map allocation objects to match table structure if needed.
+          // For simplicity here, we assume allocation objects directly match the table schema (name, adm, book, bookNo, date, returned).
+          const { error: insertError } = await supabase.from(table).insert(data);
+          if (insertError) throw insertError;
+
+          alert("Data synced to cloud successfully!");
+      } catch (e) {
+          alert("Failed to sync data to cloud.");
+          console.error("Supabase Sync Error:", e);
+      }
+  }
+
+  function saveToLocal() {
+      localStorage.setItem('teacherAllocations', JSON.stringify(tAllocations));
+      localStorage.setItem('furnitureAllocations', JSON.stringify(fAllocations));
+  }
+  
+  // --- NAVIGATION ---
+  function stopQrScanner() {
+      if (qrScanner && qrScanner.getState() === Html5QrcodeScannerState.SCANNING) {
+        qrScanner.stop().catch(err => console.error("Failed to stop scanner", err));
+      }
+      document.getElementById('readerBook')?.classList.add('hidden');
+      document.getElementById('readerFurniture')?.classList.add('hidden');
+  }
+
+  function showSection(idToShow) {
+    allSections.forEach(id => {
+      document.getElementById(id).classList.add('hidden');
+    });
+    document.getElementById(idToShow).classList.remove('hidden');
+    stopQrScanner(); // Stop scanner when leaving any section
+  }
+  function goHome() { showSection('homePage'); }
+  window.showSection = showSection;
+  window.goHome = goHome;
+
+  // --- FORCE CLEAR FUNCTION ---
+  window.forceClearData = () => {
+      if (confirm('WARNING: This will permanently delete ALL locally saved classes, books, and settings from your browser to fix loading issues. Are you sure you want to proceed?')) {
+          localStorage.clear();
+          alert('Local data cleared. Reloading page now.');
+          location.reload();
+      }
+  };
+
+  // --- POPULATE UI ELEMENTS ---
+  function populateSelectors() {
+    const tcs = document.getElementById('teacherClassSelect');
+    const fcs = document.getElementById('furnitureClassSelect');
+    [tcs, fcs].forEach(sel => sel.innerHTML = '<option value="">-- Select Class --</option>');
+    Object.keys(classes).forEach(c => {
+      [tcs, fcs].forEach(sel => sel.add(new Option(c, c)));
+    });
+    const tbook = document.getElementById('teacherBookSelect');
+    tbook.innerHTML = '<option value="">-- Select Book --</option>';
+    books.forEach(b => { if (b.available > 0) tbook.add(new Option(b.title, b.title)); });
+  }
+  
+  function renderTable(tableId, data, rowGenerator) {
+      const tbody = document.querySelector(`#${tableId} tbody`);
+      tbody.innerHTML = data.map(rowGenerator).join('');
+  }
+
+  function updateDashboard() {
+      document.getElementById('totalBooks').textContent = books.reduce((sum, b) => sum + b.available, 0) + tAllocations.filter(r => !r.returned).length;
+      document.getElementById('booksAllocated').textContent = tAllocations.filter(r => !r.returned).length;
+      document.getElementById('booksAvailable').textContent = books.reduce((sum, b) => sum + b.available, 0);
+      document.getElementById('totalFurniture').textContent = "N/A"; 
+      document.getElementById('chairsAllocated').textContent = fAllocations.filter(f => f.chair && !f.returned).length;
+      document.getElementById('lockersAllocated').textContent = fAllocations.filter(f => f.locker && !f.returned).length;
+  }
+
+
+  // --- WALLPAPER ---
+  document.getElementById('wallInput').onchange = evt => {
+    const file = evt.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      localStorage.setItem('wallpaper', reader.result);
+      document.body.style.backgroundImage = `url('${reader.result}')`;
+    };
+    reader.readAsDataURL(file);
+  };
+
+
+  // --- TEACHER SECTION LOGIC (Updated with Brilliant Idea 1) ---
+  document.getElementById('btnLoadTeacher').onclick = () => {
+    const cls = document.getElementById('teacherClassSelect').value;
+    if (!cls) return alert('Please select a class first.');
+    curTclass = classes[cls] || [];
+    stopQrScanner(); // Close scanner when loading a new class
+
+    const rowGenerator = l => {
+        // BRILLIANT IDEA 1: Auto-populate existing unreturned book allocation
+        const existingAllocation = tAllocations.find(x => x.adm == l.adm && !x.returned);
+        const bookNoValue = existingAllocation ? existingAllocation.bookNo : '';
+        const assignedAttr = existingAllocation ? 'assigned' : ''; // Attribute for CSS styling
+        const assignedTitle = existingAllocation ? `title="Already assigned book No. ${bookNoValue}"` : '';
+        const disabled = existingAllocation ? 'disabled' : '';
+        const readonly = existingAllocation ? 'readonly' : '';
+
+        return `<tr ${assignedAttr} ${assignedTitle}>
+            <td><input type="checkbox" data-adm="${l.adm}" ${disabled}></td>
+            <td>${l.name}</td>
+            <td>${l.adm}</td>
+            <td><input id="book-${l.adm}" placeholder="Book No." value="${bookNoValue}" ${readonly}></td>
+        </tr>`;
+    };
+
+    renderTable('teacherClassTable', curTclass, rowGenerator);
+  };
+
+  document.getElementById('btnFilterTeacher').onclick = () => {
+    document.querySelectorAll('#teacherClassTable tr').forEach(r => {
+      const adm = r.cells[2]?.textContent;
+      if (adm) r.style.display = tAllocations.some(x => x.adm == adm && !x.returned) ? 'none' : '';
+    });
+  };
+
+  document.getElementById('btnAssignTeacher').onclick = async () => {
+    const date = document.getElementById('teacherDate').value;
+    const book = document.getElementById('teacherBookSelect').value;
+    if (!date || !book) return alert('Please select a date and a book.');
+    
+    const newAllocations = [];
+    const assignedBookNos = new Set();
+    let conflict = false;
+
+    document.querySelectorAll('#teacherClassTable input[type=checkbox]:checked').forEach(cb => {
+      const adm = cb.dataset.adm;
+      const learner = curTclass.find(x => x.adm == adm);
+      const bookNo = document.getElementById('book-' + adm)?.value.trim();
+
+      // BRILLIANT IDEA 2: Item Conflict Check (Database/LocalStorage)
+      if (bookNo && tAllocations.some(x => x.bookNo === bookNo && !x.returned)) {
+          conflict = true; 
+          alert(`Conflict: Book No. ${bookNo} is already allocated! Please correct the number for ${learner.name}.`);
+          return;
+      }
+
+      // BRILLIANT IDEA 2: Item Conflict Check (Current Batch)
+      if (bookNo && assignedBookNos.has(bookNo)) {
+          conflict = true; 
+          alert(`Conflict: Book No. ${bookNo} is assigned to multiple learners in this batch!`);
+          return;
+      }
+      
+      if (learner && bookNo) {
+        newAllocations.push({ name: learner.name, adm, book, bookNo, date, returned: false });
+        assignedBookNos.add(bookNo);
+      } else if (learner && !bookNo) {
+        alert(`Missing Book No. for ${learner.name}. Assignment skipped.`);
+      }
+    });
+
+    if (conflict) return;
+
+    if (newAllocations.length > 0) {
+        if (supabase) {
+            tAllocations.push(...newAllocations);
+            await saveToSupabase('teacher_allocations', tAllocations);
+        } else {
+            tAllocations.push(...newAllocations);
+            saveToLocal();
+        }
+        alert(`Successfully assigned ${newAllocations.length} books!`);
+        renderTeacherAssigned();
+        updateDashboard();
+        document.getElementById('btnLoadTeacher').click(); // Reload table to reflect changes
+    } else {
+        alert("No new learners were selected or all selected learners were missing a Book No.");
+    }
+  };
+
+  function renderTeacherAssigned() {
+    renderTable('teacherAssignedTable', tAllocations.filter(r => !r.returned), r => `<tr><td>${r.name}</td><td>${r.adm}</td><td>${r.book}</td><td>${r.bookNo}</td><td>${r.date}</td></tr>`);
+  }
+
+
+  // --- FURNITURE SECTION LOGIC (Updated with Brilliant Idea 1 & 2) ---
+  document.getElementById('btnLoadFurniture').onclick = () => {
+    const cls = document.getElementById('furnitureClassSelect').value;
+    if (!cls) return alert('Please select a class first.');
+    curFclass = classes[cls] || [];
+    stopQrScanner(); // Close scanner when loading a new class
+
+    const rowGenerator = l => {
+        // BRILLIANT IDEA 1: Auto-populate existing unreturned furniture allocation
+        const existingAllocation = fAllocations.find(x => x.adm == l.adm && !x.returned);
+        const chairValue = existingAllocation ? existingAllocation.chair : '';
+        const lockerValue = existingAllocation ? existingAllocation.locker : '';
+        const assignedAttr = existingAllocation ? 'assigned' : '';
+        const assignedTitle = existingAllocation ? `title="Already assigned Chair: ${chairValue}, Locker: ${lockerValue}"` : '';
+        const disabled = existingAllocation ? 'disabled' : '';
+        const readonly = existingAllocation ? 'readonly' : '';
+
+        return `<tr ${assignedAttr} ${assignedTitle}>
+            <td><input type="checkbox" data-adm="${l.adm}" ${disabled}></td>
+            <td>${l.name}</td>
+            <td>${l.adm}</td>
+            <td><input id="chair-${l.adm}" placeholder="Chair No." value="${chairValue}" ${readonly}></td>
+            <td><input id="locker-${l.adm}" placeholder="Locker No." value="${lockerValue}" ${readonly}></td>
+        </tr>`;
+    };
+    renderTable('furnitureClassTable', curFclass, rowGenerator);
+  };
+
+  document.getElementById('btnAssignFurniture').onclick = async () => {
+    const date = document.getElementById('furnitureDate').value;
+    if (!date) return alert('Please select a date.');
+    
+    const newAllocations = [];
+    const assignedChairs = new Set();
+    const assignedLockers = new Set();
+    let conflict = false;
+
+    document.querySelectorAll('#furnitureClassTable input[type=checkbox]:checked').forEach(cb => {
+      const adm = cb.dataset.adm;
+      const learner = curFclass.find(x => x.adm == adm);
+      const chair = document.getElementById('chair-' + adm)?.value.trim();
+      const locker = document.getElementById('locker-' + adm)?.value.trim();
+
+      // BRILLIANT IDEA 2: Item Conflict Check (Database/LocalStorage)
+      if (chair && fAllocations.some(x => x.chair === chair && !x.returned)) {
+          conflict = true;
+          alert(`Conflict: Chair No. ${chair} is already allocated! Please correct the number for ${learner.name}.`);
+          return;
+      }
+      if (locker && fAllocations.some(x => x.locker === locker && !x.returned)) {
+          conflict = true;
+          alert(`Conflict: Locker No. ${locker} is already allocated! Please correct the number for ${learner.name}.`);
+          return;
+      }
+      
+      // BRILLIANT IDEA 2: Item Conflict Check (Current Batch)
+      if (chair && assignedChairs.has(chair)) {
+          conflict = true;
+          alert(`Conflict: Chair No. ${chair} is assigned to multiple learners in this batch!`);
+          return;
+      }
+      if (locker && assignedLockers.has(locker)) {
+          conflict = true;
+          alert(`Conflict: Locker No. ${locker} is assigned to multiple learners in this batch!`);
+          return;
+      }
+      
+      if (learner && (chair || locker)) {
+        newAllocations.push({ name: learner.name, adm, chair, locker, date, returned: false });
+        if (chair) assignedChairs.add(chair);
+        if (locker) assignedLockers.add(locker);
+      } else if (learner) {
+        alert(`Missing Chair/Locker No. for ${learner.name}. Assignment skipped.`);
+      }
+    });
+
+    if (conflict) return;
+
+    if (newAllocations.length > 0) {
+        if (supabase) {
+            fAllocations.push(...newAllocations);
+            await saveToSupabase('furniture_allocations', fAllocations);
+        } else {
+            fAllocations.push(...newAllocations);
+            saveToLocal();
+        }
+        alert(`Successfully assigned ${newAllocations.length} furniture items!`);
+        renderFurnitureAssigned();
+        updateDashboard();
+        document.getElementById('btnLoadFurniture').click();
+    } else {
+        alert("No new learners were selected or all selected learners were missing both Chair and Locker numbers.");
+    }
+  };
+
+  function renderFurnitureAssigned() {
+    renderTable('furnitureAssignedTable', fAllocations.filter(r => !r.returned), r => `<tr><td>${r.name}</td><td>${r.adm}</td><td>${r.chair}</td><td>${r.locker}</td><td>${r.date}</td></tr>`);
+  }
+
+
+  // --- RETURN SECTION LOGIC ---
+  document.getElementById('btnSearchReturn').onclick = () => {
+      const query = document.getElementById('returnSearchInput').value.toLowerCase();
+      const results = [
+          ...tAllocations.filter(t => !t.returned).map(t => ({...t, type: 'book', item: t.book, itemNo: t.bookNo})), 
+          ...fAllocations.filter(f => !f.returned).map(f => ({...f, type: 'furniture', item: f.chair ? 'Chair' : f.locker ? 'Locker' : '', itemNo: f.chair || f.locker}))
+      ].filter(
+          item => item.name.toLowerCase().includes(query) || item.adm.toLowerCase().includes(query)
+      );
+
+      renderTable('returnResultsTable', results, item => `
+          <tr>
+              <td>${item.type}</td>
+              <td>${item.name}</td>
+              <td>${item.adm}</td>
+              <td>${item.item}</td>
+              <td>${item.itemNo}</td>
+              <td>${item.date}</td>
+              <td><button class="btn-primary btn-sm" onclick="returnItem('${item.adm}', '${item.itemNo}', '${item.type}')">Return</button></td>
+          </tr>
+      `);
+  };
+
+  window.returnItem = async (adm, itemNo, type) => {
+      let found = false;
+      
+      if (type === 'book') {
+          tAllocations.forEach(item => {
+              if (item.adm === adm && item.bookNo === itemNo && !item.returned) {
+                  item.returned = true;
+                  found = true;
+              }
+          });
+      } else if (type === 'furniture') {
+          fAllocations.forEach(item => {
+              if (item.adm === adm && (item.chair === itemNo || item.locker === itemNo) && !item.returned) {
+                  item.returned = true;
+                  found = true;
+              }
+          });
+      }
+
+      if (found) {
+          if (supabase) {
+              await saveToSupabase('teacher_allocations', tAllocations); // Sync updated arrays
+              await saveToSupabase('furniture_allocations', fAllocations);
+          } else {
+              saveToLocal();
+          }
+          
+          document.getElementById('btnSearchReturn').click();
+          alert('Item marked as returned!');
+          updateDashboard();
+          renderTeacherAssigned();
+          renderFurnitureAssigned();
+      } else {
+          alert('Could not find the item to return.');
+      }
+  };
+
+
+  // --- EXPORT & EMAIL LOGIC (No changes) ---
+  function downloadHTML(filename, htmlContent) {
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportExcel(data, sheetName, fileName) {
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, fileName);
+  }
+
+  function sendAllocationEmail(subject, data, formatter) {
+      if (!settings.serviceID || !settings.templateID || !settings.recipient1) {
+          return alert("Email settings are not configured. Please check the Settings page.");
+      }
+      const messageBody = data.map(formatter).join('\n');
+      const templateParams = {
+          to_email1: settings.recipient1,
+          to_email2: settings.recipient2,
+          subject: subject,
+          message: `${subject}:\n\n${messageBody}`
+      };
+
+      emailjs.send(settings.serviceID, settings.templateID, templateParams)
+          .then(() => alert(`'${subject}' email sent successfully!`))
+          .catch(err => alert(`Email failed to send: ${JSON.stringify(err)}`));
+  }
+
+  // Teacher Export Buttons
+  document.getElementById('btnExportTeacherHTML').onclick = () => {
+    const html = '<html><head><style>table, th, td {border: 1px solid black; border-collapse: collapse;}</style></head><body>' + document.getElementById('teacherAssignedTable').outerHTML + '</body></html>';
+    downloadHTML('TeacherAssigned.html', html);
+  };
+  document.getElementById('btnExportTeacherExcel').onclick = () => exportExcel(tAllocations.filter(r => !r.returned), 'TeacherAssigned', 'TeacherAssigned.xlsx');
+  document.getElementById('btnEmailTeacher').onclick = () => {
+      sendAllocationEmail(
+          'Teacher Book Allocations',
+          tAllocations.filter(r => !r.returned),
+          r => `Name: ${r.name}, ADM: ${r.adm}, Book: ${r.book}, No: ${r.bookNo}, Date: ${r.date}`
+      );
+  };
+
+  // Furniture Export Buttons
+  document.getElementById('btnExportFurnitureHTML').onclick = () => {
+    const html = '<html><head><style>table, th, td {border: 1px solid black; border-collapse: collapse;}</style></head><body>' + document.getElementById('furnitureAssignedTable').outerHTML + '</body></html>';
+    downloadHTML('FurnitureAssigned.html', html);
+  };
+  document.getElementById('btnExportFurnitureExcel').onclick = () => exportExcel(fAllocations.filter(r => !r.returned), 'FurnitureAssigned', 'FurnitureAssigned.xlsx');
+  document.getElementById('btnEmailFurniture').onclick = () => {
+      sendAllocationEmail(
+          'Furniture Allocations',
+          fAllocations.filter(r => !r.returned),
+          r => `Name: ${r.name}, ADM: ${r.adm}, Chair: ${r.chair}, Locker: ${r.locker}, Date: ${r.date}`
+      );
+  };
+
+
+  // --- SETTINGS SECTION LOGIC (No changes) ---
+  function loadSettingsInputs() {
+    // Populate the form fields with values from the 'settings' object 
+    document.getElementById('emailPublicKey').value = settings.publicKey || '';
+    document.getElementById('emailServiceID').value = settings.serviceID || '';
+    document.getElementById('emailTemplateID').value = settings.templateID || '';
+    document.getElementById('emailRecipient1').value = settings.recipient1 || '';
+    document.getElementById('emailRecipient2').value = settings.recipient2 || '';
+    document.getElementById('supabaseUrl').value = settings.supabaseUrl || '';
+    document.getElementById('supabaseAnonKey').value = settings.supabaseAnonKey || '';
+  }
+
+  document.getElementById('btnSaveSupabaseSettings').onclick = () => {
+      settings.supabaseUrl = document.getElementById('supabaseUrl').value;
+      settings.supabaseAnonKey = document.getElementById('supabaseAnonKey').value;
+      localStorage.setItem('appSettings', JSON.stringify(settings));
+      if (settings.supabaseUrl && settings.supabaseAnonKey) {
+          supabase = createClient(settings.supabaseUrl, settings.supabaseAnonKey);
+          loadFromSupabase();
+      }
+      alert('Supabase credentials saved! Application will attempt to reload cloud data.');
+  };
+
+  document.getElementById('btnLoadClassesJSON').onclick = () => {
+      document.getElementById('jsonClasses').value = JSON.stringify(classes, null, 2);
+  };
+  document.getElementById('btnSaveClassesJSON').onclick = async () => {
+      try {
+          const newClasses = JSON.parse(document.getElementById('jsonClasses').value);
+          if (supabase) {
+              const classData = Object.entries(newClasses).map(([className, jsonData]) => ({ class_name: className, json_data: jsonData }));
+              // Need to handle Supabase save for classes which requires a specific table structure
+              await saveToSupabase('classes', classData);
+          } else {
+              localStorage.setItem('savedClassLists', JSON.stringify(newClasses));
+          }
+          classes = newClasses;
+          populateSelectors();
+          alert('Class lists saved successfully!');
+      } catch (e) {
+          alert('Invalid JSON format for Class Lists. Please check your data.');
+      }
+  };
+
+  document.getElementById('btnLoadBooksJSON').onclick = () => {
+      document.getElementById('jsonBooks').value = JSON.stringify(books, null, 2);
+  };
+  document.getElementById('btnSaveBooksJSON').onclick = () => {
+      try {
+          const newBooks = JSON.parse(document.getElementById('jsonBooks').value);
+          // Note: Books table is not implemented in Supabase for this example
+          localStorage.setItem('bookCatalog', JSON.stringify(newBooks));
+          books = newBooks;
+          populateSelectors();
+          alert('Book catalog saved successfully!');
+      } catch (e) {
+          alert('Invalid JSON format for Book Catalog. Please check your data.');
+      }
+  };
+
+  document.getElementById('btnSaveEmailSettings').onclick = () => {
+      settings.publicKey = document.getElementById('emailPublicKey').value;
+      settings.serviceID = document.getElementById('emailServiceID').value;
+      settings.templateID = document.getElementById('emailTemplateID').value;
+      settings.recipient1 = document.getElementById('emailRecipient1').value;
+      settings.recipient2 = document.getElementById('emailRecipient2').value;
+      localStorage.setItem('appSettings', JSON.stringify(settings));
+      if (window.emailjs) emailjs.init(settings.publicKey);
+      alert('Email settings saved!');
+  };
+
+  document.getElementById('btnSendTestEmail').onclick = () => {
+      sendAllocationEmail('Test Email from Library System', [{ message: 'This is a test email.' }], (item) => item.message);
+  };
+
+  document.getElementById('btnSyncToCloud').onclick = async () => {
+      if (!supabase) return alert("Supabase credentials not set. Please go to Settings and save them.");
+      await saveToSupabase('teacher_allocations', tAllocations);
+      await saveToSupabase('furniture_allocations', fAllocations);
+  };
+
+  document.getElementById('btnClearData').onclick = () => {
+      if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
+          localStorage.clear();
+          alert('All data has been cleared.');
+          location.reload();
+      }
+  };
+  
+  // --- QR CODE GENERATION & SCANNING (Updated with Brilliant Idea 3) ---
+  document.getElementById('btnGenerateQR').onclick = () => {
+      const type = document.getElementById('qrType').value;
+      const start = parseInt(document.getElementById('qrStartNumber').value);
+      const end = parseInt(document.getElementById('qrEndNumber').value);
+      const container = document.getElementById('qrLabelsContainer');
+      container.innerHTML = '';
+      
+      for (let i = start; i <= end; i++) {
+          const value = `${type}-${i}`;
+          const labelDiv = document.createElement('div');
+          labelDiv.className = 'qr-label';
+          labelDiv.innerHTML = `<span>${type.toUpperCase()}: ${i}</span><br><div id="qr-${value}"></div>`;
+          container.appendChild(labelDiv);
+          
+          new QRCode(document.getElementById(`qr-${value}`), {
+              text: value,
+              width: 100,
+              height: 100
+          });
+      }
+      window.print();
+  };
+
+  // BRILLIANT IDEA 3: Dedicated Scanner View Logic
+  function toggleQrScanner(readerId, targetType, successCallback) {
+      const readerDiv = document.getElementById(readerId);
+      
+      if (readerDiv.classList.contains('hidden')) {
+          stopQrScanner(); // Stop any other active scanner before starting this one
+          readerDiv.classList.remove('hidden');
+          
+          const html5QrcodeScanner = new Html5QrcodeScanner(readerId, { fps: 10, qrbox: { width: 250, height: 250 } });
+          qrScanner = html5QrcodeScanner; // Assign to global variable for control
+          
+          html5QrcodeScanner.render((decodedText, decodedResult) => {
+              onScanSuccess(decodedText, decodedResult, targetType);
+              // Stop and hide on successful scan
+              html5QrcodeScanner.stop().catch(err => console.error("Failed to stop scanner", err));
+              readerDiv.classList.add('hidden'); 
+              if (successCallback) successCallback();
+          }, onScanError);
+
+      } else {
+          stopQrScanner(); // Just stop and hide
+      }
+  }
+
+  document.getElementById('btnScanBookQR').onclick = () => {
+      toggleQrScanner('readerBook', 'book');
+  };
+
+  document.getElementById('btnScanFurnitureQR').onclick = () => {
+      toggleQrScanner('readerFurniture', 'furniture');
+  };
+  
+  function onScanSuccess(decodedText, decodedResult, targetType) {
+      alert(`QR Code Scanned: ${decodedText}`); // BRILLIANT IDEA 3: Clear feedback
+      const [type, number] = decodedText.split('-');
+      
+      const tableId = targetType === 'book' ? 'teacherClassTable' : 'furnitureClassTable';
+
+      // Auto-fill logic (checks for first available empty field of the scanned item type)
+      document.querySelectorAll(`#${tableId} input[placeholder]`).forEach(input => {
+          const placeholder = input.placeholder.toLowerCase();
+          
+          if (placeholder.includes(type) && input.value === '' && !input.readOnly) {
+              input.value = number;
+              // Check the checkbox in the same row
+              input.closest('tr').querySelector('input[type="checkbox"]').checked = true;
+          }
+      });
+  }
+  
+  function onScanError(errorMessage) {
+      // console.warn(`QR Scanner Error: ${errorMessage}`); // Keep silent unless major issue
+  }
+
+  function createClient(url, key) {
+    // Check if the supabase global object is available before attempting to create a client
+    if (typeof supabase !== 'undefined' && supabase.createClient) {
+      return supabase.createClient(url, key);
+    }
+    return null;
+  }
+
+  // --- KICK IT OFF ---
+  loadFromStorage();
+});
+</script>
+<script src="https://cdn.rawgit.com/davidshimjs/qrcodejs/gh-pages/qrcode.min.js"></script>
+</body>
+</html>
